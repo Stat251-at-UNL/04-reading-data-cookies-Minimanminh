@@ -2,7 +2,7 @@
 title: "Chocolate Chip Cookies"
 execute:
   error: true
-author: "Your Name"
+author: "Minh Vu"
 output: html_document
 ---
 
@@ -12,10 +12,61 @@ First, read in the CSV data of cookie ingredients.
 Make sure that your end-result data has appropriate types for each column - these should match the types provided in the documentation in the README.md file.
 
 ```{r}
+install.packages("readr")
+install.packages("dplyr")
+install.packages("ggplot2")
+install.packages("skimr")
+
+
+library(readr)
+library(dplyr)
+
+# Reading data
+cookies <- read_csv("choc_chip_cookie_ingredients.csv",
+                    col_types = cols(
+                      Ingredient = col_character(),
+                      Text = col_character(),
+                      Recipe_Index = col_character(),
+                      Rating = col_double(),
+                      Quantity = col_double(),
+                      Unit = col_character()
+                    ))
+
+glimpse(cookies)
+
+library(reticulate)
+
+# Install pip into the reticulate environment
+py_install("pip")
+
+# Then install pandas
+py_install("pandas")
+
 
 ```
 
 ```{python}
+import sys
+!{sys.executable} -m pip install pandas
+
+import pandas as pd
+
+cookies = pd.read_csv(
+    "choc_chip_cookie_ingredients.csv",
+    dtype={
+        "Ingredient": "string",
+        "Text": "string",
+        "Recipe_Index": "string",
+        "Unit": "string"
+    }
+)
+
+cookies["Rating"] = pd.to_numeric(cookies["Rating"], errors="coerce")
+cookies["Quantity"] = pd.to_numeric(cookies["Quantity"], errors="coerce")
+
+cookies.info()
+cookies.head()
+
 
 ```
 
@@ -34,11 +85,15 @@ Exploratory data analysis is the process of getting familiar with your dataset. 
 
 Generate at least 5 questions you might explore using this database of cookie ingredients.
 
-1.
-2. 
-3. 
-4. 
-5. 
+1.What ingredients appear in the highest proportion of recipes?
+
+2.Are higher-rated recipes associated with specific ingredients?
+
+3.How much variation exists in the quantity of key ingredients like sugar or butter?
+
+4.Are there ingredients that strongly co-occur together?
+
+5.Do recipes from different sources (AllRecipes vs Epicurious vs Misc) differ in ingredient usage?
 
 
 ### Skimming the Data
@@ -53,10 +108,21 @@ Install both packages, and read the package documentation ([R](https://cran.r-pr
 
 
 ```{r}
+install.packages("skimr")  # if needed
+library(skimr)
+
+skim(cookies, 
+     numeric.min = 0,
+     histogram = TRUE)
 
 ```
 
 ```{python}
+ pip install skimpy  
+
+from skimpy import skim
+
+skim(cookies)
 
 ```
 
@@ -68,8 +134,55 @@ Another useful technique for exploratory data analysis is to generate summary ta
 You may want to use the `dplyr` package in R (`group_by` or `count` functions), as well as the `groupby` and `count` methods in Pandas. [Python example](https://sparkbyexamples.com/pandas/pandas-groupby-count-examples/), [R example](https://dplyr.tidyverse.org/reference/count.html)
 
 [Part 1] Using R and Python, generate a table that shows what **proportion** of recipes contain each type of ingredient, for the most common 20 ingredients.
+```{r}
+total_recipes <- n_distinct(cookies$Recipe_Index)
+
+ingredient_props <- cookies %>%
+  distinct(Recipe_Index, Ingredient) %>%
+  count(Ingredient, sort = TRUE) %>%
+  mutate(proportion = n / total_recipes) %>%
+  slice_max(n, n = 20)
+
+ingredient_props
+```
+
+```{python}
+total_recipes = cookies["Recipe_Index"].nunique()
+
+ingredient_props = (
+    cookies[["Recipe_Index", "Ingredient"]]
+    .drop_duplicates()
+    .groupby("Ingredient")
+    .size()
+    .reset_index(name="count")
+)
+
+ingredient_props["proportion"] = ingredient_props["count"] / total_recipes
+
+top20 = ingredient_props.sort_values("count", ascending=False).head(20)
+
+top20
+
+```
+
+
 
 [Part 2] Print out a character string that lists all of the ingredients that do not appear in at least 20 recipes.
+```{r}
+rare_ingredients <- cookies %>%
+  distinct(Recipe_Index, Ingredient) %>%
+  count(Ingredient) %>%
+  filter(n < 20)
+
+paste(rare_ingredients$Ingredient, collapse = ", ")
+
+```
+```{python}
+rare = ingredient_props[ingredient_props["count"] < 20]["Ingredient"]
+
+print(", ".join(rare))
+
+```
 
 
 (Delete this note, but you can include data values inline in markdown text by using backticks, at least in R. For instance, here is R's built in value for pi: `r pi`. Unfortunately, this doesn't work in python using the knitr markdown engine, but you can print the list out in python anyways using a code chunk.)
@@ -79,5 +192,31 @@ You may want to use the `dplyr` package in R (`group_by` or `count` functions), 
 Using whatever plotting system you are comfortable with in R or python, see if you can create a couple of useful exploratory data visualizations which address one of the questions you wrote above - or another question which you've come up with as you've worked on this assignment.
 
 [Part 1] Create at least one plot (it doesn't have to be pretty) that showcases an interesting facet of the data.
+```{r}
+library(ggplot2)
+
+ggplot(ingredient_props, aes(x = reorder(Ingredient, proportion), 
+                             y = proportion)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Top 20 Ingredients by Proportion of Recipes",
+       x = "Ingredient",
+       y = "Proportion of Recipes")
+```
+```{python}
+import matplotlib.pyplot as plt
+
+top20_sorted = top20.sort_values("proportion")
+
+plt.figure()
+plt.barh(top20_sorted["Ingredient"], top20_sorted["proportion"])
+plt.xlabel("Proportion of Recipes")
+plt.title("Top 20 Ingredients by Proportion of Recipes")
+plt.show()
+
+```
 
 [Part 2] Write 2-3 sentences about what you can learn from that plot and what directions you might want to investigate from here.
+
+From this plot, we can see that ingredients like all-purpose flour, butter, and chocolate chips appear in nearly all recipes, as expected. However, ingredients like brown sugar and vanilla extract show slightly more variation, which may reflect differences in cookie style or regional preferences. A next step could be analyzing how ingredient presence relates to recipe rating.
+
